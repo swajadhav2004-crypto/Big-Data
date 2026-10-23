@@ -1,0 +1,144 @@
+A. Retrieve the names of all customers who made a purchase.
+SELECT DISTINCT c.Name
+. . . . . . . . . . . . . . . . . . . .> FROM Customers c
+. . . . . . . . . . . . . . . . . . . .> JOIN Sales s ON c.CustomersID = s.CustomerID;
++----------------+
+|     c.name     |
++----------------+
+| Alice Brown    |
+| Bob Johnson    |
+| Charlie Davis  |
+| Jane Smith     |
+| John Doe   
+
+
+
+B. List the products and their total sales amounts for a given date range.
+ SELECT p.ProductName, SUM(s.TotalAmount) AS TotalSalesAmount
+. . . . . . . . . . . . . . . . . . . .> FROM Products p
+. . . . . . . . . . . . . . . . . . . .> JOIN Sales s ON p.ProductID = s.ProductID
+. . . . . . . . . . . . . . . . . . . .> WHERE s.SaleDate BETWEEN '2023-01-01' AND '2023-01-31'
++----------------+-------------------+
+| p.productname  | totalsalesamount  |
++----------------+-------------------+
+| Bookshelf      | 150.00            |
+| Laptop         | 1600.00           |
+| Shoes          | 100.00            |
+| Smartphone     | 400.00            |
+| T-shirt        | 60.00             |
++----------------+-------------------+
+
+C. Find the total sales amount for each product category.
+SELECT P.Category, SUM(s.TotalAmount) AS TotalSalesAmount
+. . . . . . . . . . . . . . . . . . . .> FROM Products P
+. . . . . . . . . . . . . . . . . . . .> JOIN Sales s ON p.ProductID = s.ProductID
+. . . . . . . . . . . . . . . . . . . .> GROUP BY p.Category;
++--------------+-------------------+
+|  p.category  | totalsalesamount  |
++--------------+-------------------+
+| Clothing     | 60.00             |
+| Electronics  | 2000.00           |
+| Footwear     | 100.00            |
+| Furniture    | 150.00            |
++--------------+-----------------
+
+
+
+D. Identify the customers who made purchases in a specific city.
+ SELECT DISTINCT c.Name
+. . . . . . . . . . . . . . . . . . . .> FROM Customers c
+. . . . . . . . . . . . . . . . . . . .> JOIN Sales s ON c.CustomerID = s.CustomerID
+. . . . . . . . . . . . . . . . . . . .> JOIN Locations 1 ON c.LocationID = 1.LocationID
+. . . . . . . . . . . . . . . . . . . .> WHERE 1.city = 'Pune';
+--------------+
+|    c.name    |
++--------------+
+| Bob Johnson  |
+| John Doe     |
++--------------+
+
+
+E. Calculate the average age of customers who bought products in the 'Electronics' category.
+SELECT AVG(c.Age) AS AverageAge
+. . . . . . . . . . . . . . . . . . . .> FROM Customers c
+. . . . . . . . . . . . . . . . . . . .> JOIN Sales s ON c.CustomerID = s.CustomerID
+. . . . . . . . . . . . . . . . . . . .> JOIN Products p ON s.ProductID = p.ProductID
+. . . . . . . . . . . . . . . . . . . .> WHERE p.Category = 'Electronics';
++-------------+
+| averageage  |
++-------------+
+| 32.5        |
++-------------+
+
+
+F. List the top 3 products based on total sales amount.
+SELECT p.ProductName, SUM(s.TotalAmount) AS TotalSaleAmount
+. . . . . . . . . . . . . . . . . . . .> FROM Products p
+. . . . . . . . . . . . . . . . . . . .> JOIN Sales s ON p.ProductID = s.ProductID
+. . . . . . . . . . . . . . . . . . . .> GROUP BY p.ProductName
+. . . . . . . . . . . . . . . . . . . .> ORDER BY TotalSaleAmount DESC
+. . . . . . . . . . . . . . . . . . . .> LIMIT 3;
++----------------+------------------+
+| p.productname  | totalsaleamount  |
++----------------+------------------+
+| Laptop         | 1600.00          |
+| Smartphone     | 400.00           |
+| Bookshelf      | 150.00           |
++----------------+------------------+
+
+
+G. Find the total sales amount for each month.
+SELECT DATE_FORMAT(s.SaleDate, 'yyyy-MM') AS SaleMonth, SUM(s.TotalAmount) AS TotalSalesAmount
+. . . . . . . . . . . . . . . . . . . .> FROM Sales s
+. . . . . . . . . . . . . . . . . . . .> GROUP BY DATE_FORMAT(s.SaleDate, 'yyyy-MM');
++------------+-------------------+
+| salemonth  | totalsalesamount  |
++------------+-------------------+
+| 2023-01    | 2060.00           |
+| 2023-02    | 250.00            |
++------------+-------------------+
+
+
+H. Identify the products with no sales.
+SELECT p.ProductName
+. . . . . . . . . . . . . . . . . . . .> FROM Products p
+. . . . . . . . . . . . . . . . . . . .> LEFT JOIN Sales s ON p.ProductID = s.ProductID
+. . . . . . . . . . . . . . . . . . . .> WHERE s.SaleID IS NULL;
++----------------+
+| p.productname  |
++----------------+
++----------------+
+
+
+I. Calculate the total sales amount for each state.
+SELECT l.State, SUM(s.TotalAmount) AS TotalSalesAmount
+. . . . . . . . . . . . . . . . . . . .> FROM Locations l
+. . . . . . . . . . . . . . . . . . . .> JOIN Customers c ON l.LocationID = c.LocationID
+. . . . . . . . . . . . . . . . . . . .> JOIN Sales s ON c.CustomerID = s.CustomerID
+. . . . . . . . . . . . . . . . . . . .> GROUP BY l.State;
++--------------+-------------------+
+|   l.state    | totalsalesamount  |
++--------------+-------------------+
+| Karnataka    | 200.00            |
+| Maharashtra  | 4480.00           |
++--------------+-------------------
+
+J. Retrieve the customer names and their highest purchase amount
+SELECT c.Name, MAX(s.TotalAmount) AS HighestPurchaseAmount
+. . . . . . . . . . . . . . . . . . . .> FROM Customers c
+. . . . . . . . . . . . . . . . . . . .> JOIN Sales s ON c.CustomerID = s.CustomerID
+. . . . . . . . . . . . . . . . . . . .> GROUP BY c.Name;
++----------------+------------------------+
+|     c.name     | highestpurchaseamount  |
++----------------+------------------------+
+| Alice Brown    | 100.00                 |
+| Bob Johnson    | 400.00                 |
+| Charlie Davis  | 150.00                 |
+| Jane Smith     | 60.00                  |
+| John Doe       | 1600.00                |
++----------------+------------------------+
+
+
+
+
+
