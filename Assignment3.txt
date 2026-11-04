@@ -1,0 +1,189 @@
+1. Upload a file into HDFS. Count number of occurrences of each word in the file.
+   - create a text file in local machine.
+     ```
+     Red green blue
+     red Red green
+     BLUE Green black
+     red green blue
+     ```
+   - create a folder in hdfs and upload the file there (using hadoop fs -put ...).
+suhasi@Suhasi99032B2:~$ hadoop fs -mkdir -p /wordcount
+suhasi@Suhasi99032B2:~$ hadoop fs -put /mnt/c/Users/ADMIN/Desktop/words.txt /wordcount/
+suhasi@Suhasi99032B2:~$ hadoop fs -ls /wordcount
+Found 1 items
+-rw-r--r--   1 suhasi supergroup         65 2026-10-25 18:19 /wordcount/words.txt
+
+   - create external table with single column and the hdfs folder location.
+0: jdbc:hive2://localhost:10000/> CREATE EXTERNAL TABLE ext_word(word STRING) STORED AS TEXTFILE LOCATION '/wordcount';
+
+   - lower case line, split by space, then explode array.
+   - group by word and count.
+0: jdbc:hive2://localhost:10000/> SELECT single_word, COUNT(*) FROM (SELECT EXPLODE(SPLIT(LOWER(word),' ')) single_word FROM ext_word) temp GROUP BY single_word ORDER BY single_word;
++--------------+------+
+| single_word  | _c1  |
++--------------+------+
+| black        | 1    |
+| blue         | 3    |
+| green        | 4    |
+| red          | 4    |
++--------------+------+
+4 rows selected (42.975 seconds)
+
+2. Implement Movie recommendation system.
+   - Example Input Data
+     ```
+     userId,movieId,rating,rtime
+     17,70,3,0
+     35,21,1,0
+     49,19,2,0
+     49,21,1,0
+     49,70,4,0
+     87,19,1,0
+     87,21,2,0
+     98,19,2,0
+     ```
+   - Create pairs of movies rated by same user.
+     ```
+     userId,movie1,rating1,movie2,rating2
+     49,21,1.0,70,4.0
+     49,19,2.0,21,1.0
+     49,19,2.0,70,4.0
+     87,19,1.0,21,2.0
+     ```
+   - Create correlation table.
+     ```
+     movie1,movie2,cnt,cor
+     19,21,2,-1.0
+     19,70,1,0.0
+     21,70,1,0.0
+     ```
+   - Predict Similar movies for given movie Id. Get the recommended movies titles from movies table.
+   - Hints
+     - Start with above small data tables to test accuracy of the steps.
+     - You will need to create new intermediate tables to store results of earlier queries.
+     - For main data use ORC format to speed-up the queries.
+     - You may need to change reducer tasks memory for quicker execution and avoid OutOfMemory errors.
+       - SET mapreduce.reduce.memory.mb = 4096;
+       - SET mapreduce.reduce.java.opts = -Xmx4096m;
+
+3. Execute following queries for movies dataset.
+   1. Upload movies data (movies_caret.csv) into HDFS directory (not in hive warehouse).
+suhasi@Suhasi99032B2:~$ hadoop fs -mkdir -p /movies
+suhasi@Suhasi99032B2:~$ hadoop fs -put /mnt/c/Users/ADMIN/Desktop/Assignment/BigData/data/movies/movies/movies_caret.csv /movies/
+suhasi@Suhasi99032B2:~$ hadoop fs -ls /movies
+Found 1 items
+-rw-r--r--   1 suhasi supergroup     445007 2026-10-25 19:12 /movies/movies_caret.csv
+
+   2. Create external table movies1 with schema - `id INT, title STRING, genres STRING`.
+      - Find number of 'Action' movies.
+0: jdbc:hive2://localhost:10000/> CREATE EXTERNAL TABLE movies_1(id INT,title STRING,genres STRING)
+. . . . . . . . . . . . . . . . > ROW FORMAT DELIMITED FIELDS TERMINATED BY '^' STORED AS TEXTFILE LOCATION '/movies' TBLPROPERTIES('skip.header.line.count'='1');
+0: jdbc:hive2://localhost:10000/> SELECT COUNT(*) action_movies FROM movies_1 WHERE genres LIKE '%Action%';
++----------------+
+| action_movies  |
++----------------+
+| 1545           |
++----------------+
+1 row selected (20.766 seconds)
+
+   3. Create external table movies2 with schema - `id INT, title STRING, genres ARRAY<STRING>`.
+      - Find number of movies having single genre.
+0: jdbc:hive2://localhost:10000/> CREATE EXTERNAL TABLE movies_2(id INT,title STRING,genres ARRAY<STRING>)
+. . . . . . . . . . . . . . . . > ROW FORMAT DELIMITED FIELDS TERMINATED BY '^' COLLECTION ITEMS TERMINATED BY '|' STORED AS TEXTFILE LOCATION '/movies' TBLPROPERTIES('skip.header.line.count'='1')
+. . . . . . . . . . . . . . . . > ;
+0: jdbc:hive2://localhost:10000/> SELECT COUNT(*) single_genre FROM movies_2 WHERE SIZE(genres) = 1;
++---------------+
+| single_genre  |
++---------------+
+| 2793          |
++---------------+
+1 row selected (20.827 seconds)
+
+
+4. Upload busstops.json data into HDFS directory. Then create hive external table to fetch data using JsonSerDe.
+   ```
+   {"_id":{"$oid":"5a0720b478597fc11004d951"},"stop":"Non-BRTS","code":"103B-D-04","seq":4.0,"stage":1.0,"name":"Aranyeshwar Corner","location":{"type":"Point","coordinates":[73.857675,18.486381]}}
+   ```
+   ```
+   location STRUCT<type:STRING, coordinates:ARRAY<DOUBLE>>
+   ```
+   ```
+   When column-name have special charatcters like _ or $, they should be encapsulated in `back-quotes`.
+   ```
+suhasi@Suhasi99032B2:~$ hadoop fs -mkdir -p /busstops
+suhasi@Suhasi99032B2:~$ hadoop fs -put /mnt/c/Users/ADMIN/Desktop/Assignment/BigData/data/bus.json /busstops/
+suhasi@Suhasi99032B2:~$ hadoop fs -ls /busstops
+Found 1 items
+-rw-r--r--   1 suhasi supergroup       1740 2026-10-25 19:00 /busstops/bus.json
+
+0: jdbc:hive2://localhost:10000/> CREATE EXTERNAL TABLE busstops(`_id` STRUCT<`$oid`:STRING>,stop STRING,code STRING,seq DOUBLE, stage DOUBLE, name STRING, location STRUCT<type:STRING ,coordinates:ARRAY<DOUBLE>>)
+. . . . . . . . . . . . . . . . > ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe'
+. . . . . . . . . . . . . . . . > STORED AS TEXTFILE LOCATION '/busstops';
+
+0: jdbc:hive2://localhost:10000/> SELECT * FROM busstops;
++--------------------------------------+----------------+----------------+---------------+-----------------+--------------------------+----------------------------------------------------+
+|             busstops._id             | busstops.stop  | busstops.code  | busstops.seq  | busstops.stage  |      busstops.name       |                 busstops.location                  |
++--------------------------------------+----------------+----------------+---------------+-----------------+--------------------------+----------------------------------------------------+
+| {"$oid":"5a0720b478597fc11004d951"}  | Non-BRTS       | 103B-D-04      | 4.0           | 1.0             | Aranyeshwar Corner       | {"type":"Point","coordinates":[73.857675,18.486381]} |
+| {"$oid":"5a0720b478597fc11004d952"}  | Non-BRTS       | 103B-D-05      | 5.0           | 2.0             | Natubaug                 | {"type":"Point","coordinates":[73.857167,18.48103]} |
+| {"$oid":"5a0720b478597fc11004d953"}  | Non-BRTS       | 103B-D-07      | 7.0           | 2.0             | Shankar Maharaj Math     | {"type":"Point","coordinates":[73.857234,18.470738]} |
+| {"$oid":"5a0720b478597fc11004d954"}  | Non-BRTS       | 103B-D-06      | 6.0           | 2.0             | Padmawati                | {"type":"Point","coordinates":[73.857244,18.477347]} |
+| {"$oid":"5a0720b478597fc11004d955"}  | Non-BRTS       | 103B-D-08      | 8.0           | 3.0             | Balajinagar              | {"type":"Point","coordinates":[73.858154,18.464405]} |
+| {"$oid":"5a0720b478597fc11004d95b"}  | Non-BRTS       | 103B-D-09      | 9.0           | 3.0             | Bharati Vidyapeeth Gate  | {"type":"Point","coordinates":[73.8582,18.457434]} |
+| {"$oid":"5a0720b478597fc11004d95d"}  | Non-BRTS       | 103B-U-03      | 3.0           | 1.0             | Bharati Vidyapeeth Gate  | {"type":"Point","coordinates":[73.858154,18.457616]} |
+| {"$oid":"5a0720b478597fc11004d95e"}  | Non-BRTS       | 103B-U-04      | 4.0           | 2.0             | Balajinagar              | {"type":"Point","coordinates":[73.857973,18.464558]} |
+| {"$oid":"5a0720b478597fc11004d95f"}  | Non-BRTS       | 103B-U-05      | 5.0           | 2.0             | Shankar Maharaj Math     | {"type":"Point","coordinates":[73.857067,18.470349]} |
++--------------------------------------+----------------+----------------+---------------+-----------------+--------------------------+----------------------------------------------------+
+9 rows selected (0.685 seconds)
+
+0: jdbc:hive2://localhost:10000/> SELECT stop,code,name FROM busstops;
++-----------+------------+--------------------------+
+|   stop    |    code    |           name           |
++-----------+------------+--------------------------+
+| Non-BRTS  | 103B-D-04  | Aranyeshwar Corner       |
+| Non-BRTS  | 103B-D-05  | Natubaug                 |
+| Non-BRTS  | 103B-D-07  | Shankar Maharaj Math     |
+| Non-BRTS  | 103B-D-06  | Padmawati                |
+| Non-BRTS  | 103B-D-08  | Balajinagar              |
+| Non-BRTS  | 103B-D-09  | Bharati Vidyapeeth Gate  |
+| Non-BRTS  | 103B-U-03  | Bharati Vidyapeeth Gate  |
+| Non-BRTS  | 103B-U-04  | Balajinagar              |
+| Non-BRTS  | 103B-U-05  | Shankar Maharaj Math     |
++-----------+------------+--------------------------+
+9 rows selected (0.205 seconds)
+
+0: jdbc:hive2://localhost:10000/> SELECT location.coordinates[0] longitude,location.coordinates[1] latitude FROM busstops;
++------------+------------+
+| longitude  |  latitude  |
++------------+------------+
+| 73.857675  | 18.486381  |
+| 73.857167  | 18.48103   |
+| 73.857234  | 18.470738  |
+| 73.857244  | 18.477347  |
+| 73.858154  | 18.464405  |
+| 73.8582    | 18.457434  |
+| 73.858154  | 18.457616  |
+| 73.857973  | 18.464558  |
+| 73.857067  | 18.470349  |
++------------+------------+
+9 rows selected (0.384 seconds)
+
+0: jdbc:hive2://localhost:10000/> SELECT `_id`.`$oid` FROM busstops;
++---------------------------+
+|           $oid            |
++---------------------------+
+| 5a0720b478597fc11004d951  |
+| 5a0720b478597fc11004d952  |
+| 5a0720b478597fc11004d953  |
+| 5a0720b478597fc11004d954  |
+| 5a0720b478597fc11004d955  |
+| 5a0720b478597fc11004d95b  |
+| 5a0720b478597fc11004d95d  |
+| 5a0720b478597fc11004d95e  |
+| 5a0720b478597fc11004d95f  |
++---------------------------+
+9 rows selected (0.198 seconds)
+
+
+
+
