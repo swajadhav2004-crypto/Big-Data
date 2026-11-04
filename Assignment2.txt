@@ -1,0 +1,521 @@
+1. Create transactional emp and dept tables in orc format. Load data from staging table.
+0: jdbc:hive2://localhost:10000/> CREATE TABLE emp(empno INT,ename STRING, job STRING, mgr INT, hire DATE, sal DECIMAL(8,2),comm DECIMAL(8,2), deptno INT)
+. . . . . . . . . . . . . . . . > STORED AS ORC TBLPROPERTIES('transactional' = 'true');
+
+0: jdbc:hive2://localhost:10000/> INSERT INTO emp SELECT * FROM emp_staging;
+
+0: jdbc:hive2://localhost:10000/> SELECT * FROM emp LIMIT 10;
++------------+------------+------------+----------+-------------+----------+-----------+-------------+
+| emp.empno  | emp.ename  |  emp.job   | emp.mgr  |  emp.hire   | emp.sal  | emp.comm  | emp.deptno  |
++------------+------------+------------+----------+-------------+----------+-----------+-------------+
+| 7369       | SMITH      | CLERK      | 7902     | 1980-12-17  | 800.00   | NULL      | 20          |
+| 7499       | ALLEN      | SALESMAN   | 7698     | 1981-02-20  | 1600.00  | 300.00    | 30          |
+| 7521       | WARD       | SALESMAN   | 7698     | 1981-02-22  | 1250.00  | 500.00    | 30          |
+| 7566       | JONES      | MANAGER    | 7839     | 1981-04-02  | 2975.00  | NULL      | 20          |
+| 7654       | MARTIN     | SALESMAN   | 7698     | 1981-09-28  | 1250.00  | 1400.00   | 30          |
+| 7698       | BLAKE      | MANAGER    | 7839     | 1981-05-01  | 2850.00  | NULL      | 30          |
+| 7782       | CLARK      | MANAGER    | 7839     | 1981-06-09  | 2450.00  | NULL      | 10          |
+| 7788       | SCOTT      | ANALYST    | 7566     | 1982-12-09  | 3000.00  | NULL      | 20          |
+| 7839       | KING       | PRESIDENT  | NULL     | 1981-11-17  | 5000.00  | NULL      | 10          |
+| 7844       | TURNER     | SALESMAN   | 7698     | 1981-09-08  | 1500.00  | 0.00      | 30          |
++------------+------------+------------+----------+-------------+----------+-----------+-------------+
+10 rows selected (0.484 seconds)
+
+0: jdbc:hive2://localhost:10000/> CREATE TABLE dept (deptno INT,dname VARCHAR(40), loc STRING)
+. . . . . . . . . . . . . . . . > STORED AS ORC TBLPROPERTIES('transactional'='true');
+
+0: jdbc:hive2://localhost:10000/> INSERT INTO dept SELECT * FROM dept_staging;
+
+0: jdbc:hive2://localhost:10000/> SELECT * FROM dept LIMIT 10;
++--------------+-------------+-----------+
+| dept.deptno  | dept.dname  | dept.loc  |
++--------------+-------------+-----------+
+| 10           | ACCOUNTING  | NEW YORK  |
+| 20           | RESEARCH    | DALLAS    |
+| 30           | SALES       | CHICAGO   |
+| 40           | OPERATIONS  | BOSTON    |
++--------------+-------------+-----------+
+4 rows selected (0.253 seconds)
+
+2. Count number of employees per dept per job. Print all combinations of subtotals and grand totals.
+0: jdbc:hive2://localhost:10000/> SELECT deptno,job,COUNT(empno) count FROM emp GROUP BY deptno,job WITH CUBE;
++---------+------------+--------+
+| deptno  |    job     | count  |
++---------+------------+--------+
+| NULL    | NULL       | 14     |
+| 10      | NULL       | 3      |
+| 20      | NULL       | 5      |
+| 30      | NULL       | 6      |
+| NULL    | ANALYST    | 2      |
+| 20      | ANALYST    | 2      |
+| NULL    | CLERK      | 4      |
+| 10      | CLERK      | 1      |
+| 20      | CLERK      | 2      |
+| 30      | CLERK      | 1      |
+| NULL    | MANAGER    | 3      |
+| 10      | MANAGER    | 1      |
+| 20      | MANAGER    | 1      |
+| 30      | MANAGER    | 1      |
+| NULL    | PRESIDENT  | 1      |
+| 10      | PRESIDENT  | 1      |
+| NULL    | SALESMAN   | 4      |
+| 30      | SALESMAN   | 4      |
++---------+------------+--------+
+18 rows selected (20.716 seconds)
+
+3. Display only subtotals of deptwise employees and jobwise employees (count).
+0: jdbc:hive2://localhost:10000/> SELECT deptno, NULL AS job, COUNT(*) AS emp_count
+. . . . . . . . . . . . . . . . > FROM emp
+. . . . . . . . . . . . . . . . > GROUP BY deptno
+. . . . . . . . . . . . . . . . >
+. . . . . . . . . . . . . . . . > UNION ALL
+. . . . . . . . . . . . . . . . >
+. . . . . . . . . . . . . . . . > SELECT NULL AS deptno, job, COUNT(*) AS emp_count
+. . . . . . . . . . . . . . . . > FROM emp
+. . . . . . . . . . . . . . . . > GROUP BY job;
++-------------+------------+----------------+
+| _u1.deptno  |  _u1.job   | _u1.emp_count  |
++-------------+------------+----------------+
+| NULL        | ANALYST    | 2              |
+| NULL        | CLERK      | 4              |
+| NULL        | MANAGER    | 3              |
+| NULL        | PRESIDENT  | 1              |
+| NULL        | SALESMAN   | 4              |
+| 10          | NULL       | 3              |
+| 20          | NULL       | 5              |
+| 30          | NULL       | 6              |
++-------------+------------+----------------+
+8 rows selected (73.714 seconds)
+
+4. Find hottest and coolest month from ncdc data.
+0: jdbc:hive2://localhost:10000/> CREATE TABLE ncdc_month_staging(yr INT, month INT, temp INT, quality INT)
+. . . . . . . . . . . . . . . . > ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
+. . . . . . . . . . . . . . . . > WITH SERDEPROPERTIES('input.regex'='^.{15}([0-9]{4})([0-9]{2}).{66}([-\+][0-9]{4})([0-9]).*$') STORED AS TEXTFILE;
+
+0: jdbc:hive2://localhost:10000/> LOAD DATA
+. . . . . . . . . . . . . . . . > LOCAL INPATH '/mnt/c/Users/ADMIN/Desktop/Assignment/BigData/data/ncdc/ncdc/*'
+. . . . . . . . . . . . . . . . > INTO TABLE emp_month_staging;
+
+0: jdbc:hive2://localhost:10000/> (SELECT month,AVG(temp) FROM ncdc_month_staging WHERE temp!=9999 AND quality IN (0,1,2,4,5,9)
+. . . . . . . . . . . . . . . . > GROUP BY month ORDER BY AVG(temp) DESC LIMIT 1)
+. . . . . . . . . . . . . . . . > UNION
+. . . . . . . . . . . . . . . . > (SELECT month, AVG(temp) FROM ncdc_month_staging WHERE temp!=9999 AND quality IN (0,1,2,4,5,9)
+. . . . . . . . . . . . . . . . > GROUP BY month ORDER BY AVG(temp) ASC LIMIT 1);
+
++------------+---------------------+
+| _u1.month  |       _u1._c1       |
++------------+---------------------+
+| 2          | -75.16562866684718  |
+| 7          | 160.3485770685968   |
++------------+---------------------+
+2 rows selected (128.29 seconds)
+
+5. Create a table movie_staging and load data from movies_caret.csv.
+   - Hint: TBLPROPERTIES ('skip.header.line.count'='1')
+   - Treat `genres` as ARRAY.
+0: jdbc:hive2://localhost:10000/> CREATE TABLE movie_staging (id INT,title STRING, genres ARRAY<STRING>)
+. . . . . . . . . . . . . . . . > ROW FORMAT DELIMITED FIELDS TERMINATED BY '^'
+. . . . . . . . . . . . . . . . > COLLECTION ITEMS TERMINATED BY '|' STORED AS TEXTFILE
+. . . . . . . . . . . . . . . . > TBLPROPERTIES('skip.header.line.count'='1');
+
+0: jdbc:hive2://localhost:10000/> LOAD DATA
+. . . . . . . . . . . . . . . . > LOCAL INPATH '/mnt/c/Users/ADMIN/Desktop/Assignment/BigData/data/movies/movies/movies_caret.csv'
+. . . . . . . . . . . . . . . . > INTO TABLE movie_staging;
+
+   - A. count number of movies for given genre = 'Action'
+0: jdbc:hive2://localhost:10000/> SELECT COUNT(id) FROM movie_staging WHERE ARRAY_CONTAINS(genres,'Action');
++-------+
+|  _c0  |
++-------+
+| 1545  |
++-------+
+1 row selected (21.599 seconds)
+
+   - B. count number of genres for movie "Toy Story (1995)"
+0: jdbc:hive2://localhost:10000/> SELECT SIZE(genres) count FROM movie_staging WHERE title = "Toy Story (1995)";
++--------+
+| count  |
++--------+
+| 5      |
++--------+
+1 row selected (0.223 seconds)
+
+6. Execute following queries on "emp" and "dept" dataset.
+   1. Create table "emp_staging" and load data from emp.csv in it.
+   2. Create table "dept_staging" and load data from dept.csv in it.
+   3. Display dept name and number of emps in each dept.
+0: jdbc:hive2://localhost:10000/> SELECT d.dname , COUNT(e.empno) FROM dept_staging d INNER JOIN emp_staging e ON d.deptno = e.deptno GROUP BY dname;
++-------------+------+
+|   d.dname   | _c1  |
++-------------+------+
+| ACCOUNTING  | 3    |
+| RESEARCH    | 5    |
+| SALES       | 6    |
++-------------+------+
+3 rows selected (23.719 seconds)
+
+   4. Display emp name and his dept name.
+0: jdbc:hive2://localhost:10000/> SELECT e.ename, d.dname FROM emp_staging e INNER JOIN dept_staging d ON e.deptno = d.deptno;
++----------+-------------+
+| e.ename  |   d.dname   |
++----------+-------------+
+| SMITH    | RESEARCH    |
+| ALLEN    | SALES       |
+| WARD     | SALES       |
+| JONES    | RESEARCH    |
+| MARTIN   | SALES       |
+| BLAKE    | SALES       |
+| CLARK    | ACCOUNTING  |
+| SCOTT    | RESEARCH    |
+| KING     | ACCOUNTING  |
+| TURNER   | SALES       |
+| ADAMS    | RESEARCH    |
+| JAMES    | SALES       |
+| FORD     | RESEARCH    |
+| MILLER   | ACCOUNTING  |
++----------+-------------+
+14 rows selected (18.471 seconds)
+
+   5. Display all emps (name, job, deptno) with their manager (name, job, deptno), who are not in their department.
+0: jdbc:hive2://localhost:10000/> SELECT e.ename emp_name,e.job emp_job,e.deptno emp_deptno, m.ename mgr_name, m.job mgr_job, m.deptno mgr_deptno
+. . . . . . . . . . . . . . . . > FROM emp_staging e INNER JOIN emp_staging m ON e.mgr = m.empno WHERE e.deptno != m.deptno;
++-----------+----------+-------------+-----------+------------+-------------+
+| emp_name  | emp_job  | emp_deptno  | mgr_name  |  mgr_job   | mgr_deptno  |
++-----------+----------+-------------+-----------+------------+-------------+
+| JONES     | MANAGER  | 20          | KING      | PRESIDENT  | 10          |
+| BLAKE     | MANAGER  | 30          | KING      | PRESIDENT  | 10          |
++-----------+----------+-------------+-----------+------------+-------------+
+2 rows selected (30.285 seconds)
+
+   6. Display all manager names with list of all dept names (where they can work).
+0: jdbc:hive2://localhost:10000/> SELECT e.ename,d.dname FROM emp_staging e CROSS JOIN dept_staging d WHERE e.job = 'MANAGER';
++----------+-------------+
+| e.ename  |   d.dname   |
++----------+-------------+
+| JONES    | ACCOUNTING  |
+| JONES    | RESEARCH    |
+| JONES    | SALES       |
+| JONES    | OPERATIONS  |
+| BLAKE    | ACCOUNTING  |
+| BLAKE    | RESEARCH    |
+| BLAKE    | SALES       |
+| BLAKE    | OPERATIONS  |
+| CLARK    | ACCOUNTING  |
+| CLARK    | RESEARCH    |
+| CLARK    | SALES       |
+| CLARK    | OPERATIONS  |
++----------+-------------+
+12 rows selected (21.307 seconds)
+
+   7. Display job-wise total salary along with total salary of all employees.
+0: jdbc:hive2://localhost:10000/> SELECT job,SUM(sal) jobwise_total ,(SELECT SUM(sal) FROM emp_staging) totalemp_sal FROM emp_staging GROUP BY job;
++------------+----------------+---------------+
+|    job     | jobwise_total  | totalemp_sal  |
++------------+----------------+---------------+
+| ANALYST    | 6000.00        | 29025.00      |
+| CLERK      | 4150.00        | 29025.00      |
+| MANAGER    | 8275.00        | 29025.00      |
+| PRESIDENT  | 5000.00        | 29025.00      |
+| SALESMAN   | 5600.00        | 29025.00      |
++------------+----------------+---------------+
+5 rows selected (63.774 seconds)
+
+   8. Display dept-wise total salary along with total salary of all employees.
+0: jdbc:hive2://localhost:10000/> SELECT deptno,SUM(sal) deptnowise_sal, (SELECT SUM(sal) FROM emp_staging) totalemp_sal FROM emp_staging GROUP BY deptno;
++---------+-----------------+---------------+
+| deptno  | deptnowise_sal  | totalemp_sal  |
++---------+-----------------+---------------+
+| 10      | 8750.00         | 29025.00      |
+| 20      | 10875.00        | 29025.00      |
+| 30      | 9400.00         | 29025.00      |
++---------+-----------------+---------------+
+3 rows selected (66.29 seconds)
+
+   9. Display per dept job-wise total salary along with total salary of all employees.
+0: jdbc:hive2://localhost:10000/> SELECT deptno,job,SUM(sal) deptjob_sal, (SELECT SUM(sal) FROM emp_staging) totalemp_sal FROM emp_staging GROUP BY deptno,job;
++---------+------------+--------------+---------------+
+| deptno  |    job     | deptjob_sal  | totalemp_sal  |
++---------+------------+--------------+---------------+
+| 20      | ANALYST    | 6000.00      | 29025.00      |
+| 10      | CLERK      | 1300.00      | 29025.00      |
+| 20      | CLERK      | 1900.00      | 29025.00      |
+| 30      | CLERK      | 950.00       | 29025.00      |
+| 10      | MANAGER    | 2450.00      | 29025.00      |
+| 20      | MANAGER    | 2975.00      | 29025.00      |
+| 30      | MANAGER    | 2850.00      | 29025.00      |
+| 10      | PRESIDENT  | 5000.00      | 29025.00      |
+| 30      | SALESMAN   | 5600.00      | 29025.00      |
++---------+------------+--------------+---------------+
+9 rows selected (66.588 seconds)
+
+   10. Display number of employees recruited per year in descending order of employee count.
+0: jdbc:hive2://localhost:10000/> SELECT YEAR(hire),COUNT(empno) FROM emp_staging GROUP BY YEAR(hire) ORDER BY COUNT(empno) DESC;
++-------+------+
+|  _c0  | _c1  |
++-------+------+
+| 1981  | 10   |
+| 1982  | 2    |
+| 1983  | 1    |
+| 1980  | 1    |
++-------+------+
+4 rows selected (46.603 seconds)
+
+   11. Display unique job roles who gets commission.
+0: jdbc:hive2://localhost:10000/> SELECT DISTINCT job FROM emp_staging WHERE comm IS NOT NULL;
++-----------+
+|    job    |
++-----------+
+| SALESMAN  |
++-----------+
+1 row selected (22.064 seconds)
+
+   12. Display dept name in which there is no employee (using sub-query).
+0: jdbc:hive2://localhost:10000/> SELECT dname FROM dept_staging WHERE deptno NOT IN (SELECT deptno FROM emp_staging);
++-------------+
+|    dname    |
++-------------+
+| OPERATIONS  |
++-------------+
+1 row selected (86.351 seconds)
+
+   13. Display emp-name, dept-name, salary, total salary of that dept (using sub-query).
+0: jdbc:hive2://localhost:10000/> SELECT e.ename,d.dname,e.sal,(SELECT SUM(e2.sal) FROM emp_staging e2 WHERE e2.deptno = e.deptno) AS totaldept_sal FROM emp_staging e JOIN dept_staging d ON e.deptno = d.deptno;
++----------+-------------+----------+----------------+
+| e.ename  |   d.dname   |  e.sal   | totaldept_sal  |
++----------+-------------+----------+----------------+
+| SMITH    | RESEARCH    | 800.00   | 10875.00       |
+| ALLEN    | SALES       | 1600.00  | 9400.00        |
+| WARD     | SALES       | 1250.00  | 9400.00        |
+| JONES    | RESEARCH    | 2975.00  | 10875.00       |
+| MARTIN   | SALES       | 1250.00  | 9400.00        |
+| BLAKE    | SALES       | 2850.00  | 9400.00        |
+| CLARK    | ACCOUNTING  | 2450.00  | 8750.00        |
+| SCOTT    | RESEARCH    | 3000.00  | 10875.00       |
+| KING     | ACCOUNTING  | 5000.00  | 8750.00        |
+| TURNER   | SALES       | 1500.00  | 9400.00        |
+| ADAMS    | RESEARCH    | 1100.00  | 10875.00       |
+| JAMES    | SALES       | 950.00   | 9400.00        |
+| FORD     | RESEARCH    | 3000.00  | 10875.00       |
+| MILLER   | ACCOUNTING  | 1300.00  | 8750.00        |
++----------+-------------+----------+----------------+
+14 rows selected (41.461 seconds)
+
+   14. Display all managers and presidents along with number of (immediate) subbordinates.
+0: jdbc:hive2://localhost:10000/> SELECT m.ename,
+. . . . . . . . . . . . . . . . >        m.job,
+. . . . . . . . . . . . . . . . >        COUNT(e.empno) AS subordinates
+. . . . . . . . . . . . . . . . > FROM emp_staging m
+. . . . . . . . . . . . . . . . > LEFT JOIN emp_staging e
+. . . . . . . . . . . . . . . . >     ON m.empno = e.mgr
+. . . . . . . . . . . . . . . . > WHERE m.job IN ('MANAGER', 'PRESIDENT')
+. . . . . . . . . . . . . . . . > GROUP BY m.ename, m.job;
++----------+------------+---------------+
+| m.ename  |   m.job    | subordinates  |
++----------+------------+---------------+
+| BLAKE    | MANAGER    | 5             |
+| CLARK    | MANAGER    | 1             |
+| JONES    | MANAGER    | 2             |
+| KING     | PRESIDENT  | 3             |
++----------+------------+---------------+
+4 rows selected (28.596 seconds)
+
+7. Execute following queries for books.csv dataset.
+   1. Create table "books_staging" and load books.csv in it.
+0: jdbc:hive2://localhost:10000/> CREATE TABLE books_staging(id INT, title STRING, author STRING,subject STRING, price DOUBLE)
+. . . . . . . . . . . . . . . . > ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' STORED AS TEXTFILE;
+0: jdbc:hive2://localhost:10000/> LOAD DATA LOCAL INPATH '/mnt/c/Users/ADMIN/Desktop/Assignment/BigData/data/books.csv' INTO TABLE books_staging;
+0: jdbc:hive2://localhost:10000/> select * from books_staging
+. . . . . . . . . . . . . . . . > ;
++-------------------+----------------------------------+-----------------------+------------------------+----------------------+
+| books_staging.id  |       books_staging.title        | books_staging.author  | books_staging.subject  | books_staging.price  |
++-------------------+----------------------------------+-----------------------+------------------------+----------------------+
+| 1001              | Exploring C                      | Yashwant Kanetkar     | C Programming          | 123.456              |
+| 1002              | Pointers in C                    | Yashwant Kanetkar     | C Programming          | 371.019              |
+| 1003              | ANSI C Programming               | E Balaguruswami       | C Programming          | 334.215              |
+| 1004              | ANSI C Programming               | Dennis Ritchie        | C Programming          | 140.121              |
+| 2001              | C++ Complete Reference           | Herbert Schildt       | C++ Programming        | 417.764              |
+| 2002              | C++ Primer                       | Stanley Lippman       | C++ Programming        | 620.665              |
+| 2003              | C++ Programming Language         | Bjarne Stroustrup     | C++ Programming        | 987.213              |
+| 3001              | Java Complete Reference          | Herbert Schildt       | Java Programming       | 525.121              |
+| 3002              | Core Java Volume I               | Cay Horstmann         | Java Programming       | 575.651              |
+| 3003              | Java Programming Language        | James Gosling         | Java Programming       | 458.238              |
+| 4001              | Operatig System Concepts         | Peter Galvin          | Operating Systems      | 567.391              |
+| 4002              | Design of UNIX Operating System  | Mauris J Bach         | Operating Systems      | 421.938              |
+| 4003              | UNIX Internals                   | Uresh Vahalia         | Operating Systems      | 352.822              |
++-------------------+----------------------------------+-----------------------+------------------------+----------------------+
+13 rows selected (0.348 seconds)
+
+   2. Create table "books_orc" as transactional table.
+0: jdbc:hive2://localhost:10000/> CREATE TABLE books_orc(id INT,title STRING, author STRING, subject STRING, price DOUBLE)
+. . . . . . . . . . . . . . . . > STORED AS ORC TBLPROPERTIES('transactional'='true');
+0: jdbc:hive2://localhost:10000/> INSERT INTO books_orc SELECT * FROM books_staging;
++-----------+------------+----------+
+| col_name  | data_type  | comment  |
++-----------+------------+----------+
+| id        | int        |          |
+| title     | string     |          |
+| author    | string     |          |
+| subject   | string     |          |
+| price     | double     |          |
++-----------+------------+----------+
+5 rows selected (0.171 seconds)
+
+   3. Create a materialized view for summary -- Subjectwise average book price.
+0: jdbc:hive2://localhost:10000/> CREATE MATERIALIZED VIEW mv_books AS SELECT subject,AVG(price) AS avg_price FROM books_orc GROUP BY subject;
+0: jdbc:hive2://localhost:10000/> select * from mv_books;
++--------------------+---------------------+
+|  mv_books.subject  | mv_books.avg_price  |
++--------------------+---------------------+
+| C Programming      | 242.20275           |
+| C++ Programming    | 675.214             |
+| Java Programming   | 519.67              |
+| Operating Systems  | 447.3836666666666   |
++--------------------+---------------------+
+4 rows selected (0.467 seconds)
+
+   4. Display a report that shows subject and average price in descending order -- on materialized view.
+0: jdbc:hive2://localhost:10000/> SELECT subject,avg_price FROM mv_books ORDER BY avg_price DESC;
++--------------------+--------------------+
+|      subject       |     avg_price      |
++--------------------+--------------------+
+| C++ Programming    | 675.214            |
+| Java Programming   | 519.67             |
+| Operating Systems  | 447.3836666666666  |
+| C Programming      | 242.20275          |
++--------------------+--------------------+
+4 rows selected (21.747 seconds)
+
+   5. Create a new file newbooks.csv.
+      ```
+      20,Atlas Shrugged,Ayn Rand,Novel,723.90
+      21,The Fountainhead,Ayn Rand,Novel,923.80
+      22,The Archer,Paulo Cohelo,Novel,623.94
+      23,The Alchemist,Paulo Cohelo,Novel,634.80
+      ```
+suhasi@Suhasi99032B2:~$ nano newbooks.csv
+suhasi@Suhasi99032B2:~$ cat newbooks.csv
+20,Atlas Shrugged,Ayn Rand,Novel,723.90
+21,The Fountainhead,Ayn Rand,Novel,923.80
+22,The Archer,Paulo Cohelo,Novel,623.94
+23,The Alchemist,Paulo Cohelo,Novel,634.80
+
+   6. Upload the file newbooks.csv into books_staging.
+0: jdbc:hive2://localhost:10000/> LOAD DATA LOCAL INPATH '/home/suhasi/newbooks.csv' INTO TABLE books_staging;
+0: jdbc:hive2://localhost:10000/> select * from books_staging;
++-------------------+----------------------------------+-----------------------+------------------------+----------------------+
+| books_staging.id  |       books_staging.title        | books_staging.author  | books_staging.subject  | books_staging.price  |
++-------------------+----------------------------------+-----------------------+------------------------+----------------------+
+| 1001              | Exploring C                      | Yashwant Kanetkar     | C Programming          | 123.456              |
+| 1002              | Pointers in C                    | Yashwant Kanetkar     | C Programming          | 371.019              |
+| 1003              | ANSI C Programming               | E Balaguruswami       | C Programming          | 334.215              |
+| 1004              | ANSI C Programming               | Dennis Ritchie        | C Programming          | 140.121              |
+| 2001              | C++ Complete Reference           | Herbert Schildt       | C++ Programming        | 417.764              |
+| 2002              | C++ Primer                       | Stanley Lippman       | C++ Programming        | 620.665              |
+| 2003              | C++ Programming Language         | Bjarne Stroustrup     | C++ Programming        | 987.213              |
+| 3001              | Java Complete Reference          | Herbert Schildt       | Java Programming       | 525.121              |
+| 3002              | Core Java Volume I               | Cay Horstmann         | Java Programming       | 575.651              |
+| 3003              | Java Programming Language        | James Gosling         | Java Programming       | 458.238              |
+| 4001              | Operatig System Concepts         | Peter Galvin          | Operating Systems      | 567.391              |
+| 4002              | Design of UNIX Operating System  | Mauris J Bach         | Operating Systems      | 421.938              |
+| 4003              | UNIX Internals                   | Uresh Vahalia         | Operating Systems      | 352.822              |
+| 20                | Atlas Shrugged                   | Ayn Rand              | Novel                  | 723.9                |
+| 21                | The Fountainhead                 | Ayn Rand              | Novel                  | 923.8                |
+| 22                | The Archer                       | Paulo Cohelo          | Novel                  | 623.94               |
+| 23                | The Alchemist                    | Paulo Cohelo          | Novel                  | 634.8                |
++-------------------+----------------------------------+-----------------------+------------------------+----------------------+
+17 rows selected (0.554 seconds)
+
+   7. Insert "new" records from books_staging into books_orc.
+0: jdbc:hive2://localhost:10000/> INSERT INTO TABLE books_orc SELECT * FROM books_staging WHERE id BETWEEN 20 AND 23;
+0: jdbc:hive2://localhost:10000/> select * from books_orc;
++---------------+----------------------------------+--------------------+--------------------+------------------+
+| books_orc.id  |         books_orc.title          |  books_orc.author  | books_orc.subject  | books_orc.price  |
++---------------+----------------------------------+--------------------+--------------------+------------------+
+| 1001          | Exploring C                      | Yashwant Kanetkar  | C Programming      | 123.456          |
+| 1002          | Pointers in C                    | Yashwant Kanetkar  | C Programming      | 371.019          |
+| 1003          | ANSI C Programming               | E Balaguruswami    | C Programming      | 334.215          |
+| 1004          | ANSI C Programming               | Dennis Ritchie     | C Programming      | 140.121          |
+| 2001          | C++ Complete Reference           | Herbert Schildt    | C++ Programming    | 417.764          |
+| 2002          | C++ Primer                       | Stanley Lippman    | C++ Programming    | 620.665          |
+| 2003          | C++ Programming Language         | Bjarne Stroustrup  | C++ Programming    | 987.213          |
+| 3001          | Java Complete Reference          | Herbert Schildt    | Java Programming   | 525.121          |
+| 3002          | Core Java Volume I               | Cay Horstmann      | Java Programming   | 575.651          |
+| 3003          | Java Programming Language        | James Gosling      | Java Programming   | 458.238          |
+| 4001          | Operatig System Concepts         | Peter Galvin       | Operating Systems  | 567.391          |
+| 4002          | Design of UNIX Operating System  | Mauris J Bach      | Operating Systems  | 421.938          |
+| 4003          | UNIX Internals                   | Uresh Vahalia      | Operating Systems  | 352.822          |
+| 20            | Atlas Shrugged                   | Ayn Rand           | Novel              | 723.9            |
+| 21            | The Fountainhead                 | Ayn Rand           | Novel              | 923.8            |
+| 22            | The Archer                       | Paulo Cohelo       | Novel              | 623.94           |
+| 23            | The Alchemist                    | Paulo Cohelo       | Novel              | 634.8            |
++---------------+----------------------------------+--------------------+--------------------+------------------+
+17 rows selected (0.362 seconds)
+
+   8. Display a report that shows subject and average price in descending order -- on materialized view. -- Are new books visible in report?
+0: jdbc:hive2://localhost:10000/> SELECT subject,avg_price FROM mv_books ORDER BY avg_price DESC;
++--------------------+--------------------+
+|      subject       |     avg_price      |
++--------------------+--------------------+
+| C++ Programming    | 675.214            |
+| Java Programming   | 519.67             |
+| Operating Systems  | 447.3836666666666  |
+| C Programming      | 242.20275          |
++--------------------+--------------------+
+4 rows selected (27.023 seconds)
+No new books are not visible in the report
+
+   9. Rebuild the materialized view.
+0: jdbc:hive2://localhost:10000/> ALTER MATERIALIZED VIEW mv_books REBUILD;
+
+   10. Display a report that shows subject and average price in descending order -- on materialized view. -- Are new books visible in report?
+0: jdbc:hive2://localhost:10000/> SELECT subject,avg_price FROM mv_books ORDER BY avg_price DESC;
++--------------------+--------------------+
+|      subject       |     avg_price      |
++--------------------+--------------------+
+| Novel              | 726.6099999999999  |
+| C++ Programming    | 675.214            |
+| Java Programming   | 519.67             |
+| Operating Systems  | 447.3836666666666  |
+| C Programming      | 242.20275          |
++--------------------+--------------------+
+5 rows selected (24.737 seconds)
+yes now new books are visible in the report
+
+   11. Increase price of all Java books by 10% in books_orc.
+0: jdbc:hive2://localhost:10000/> UPDATE books_orc SET price = price + price*0.10 WHERE subject = 'Java Programming';
+
+   12. Rebuild the materialized view.
+0: jdbc:hive2://localhost:10000/> ALTER MATERIALIZED VIEW mv_books REBUILD;
+
+   13. Display a report that shows subject and average price in descending order -- on materialized view. -- Are new price changes visible in report?
+0: jdbc:hive2://localhost:10000/> SELECT subject,avg_price FROM mv_books ORDER BY avg_price DESC;
++--------------------+--------------------+
+|      subject       |     avg_price      |
++--------------------+--------------------+
+| Novel              | 726.6099999999999  |
+| C++ Programming    | 675.214            |
+| Java Programming   | 571.6370000000001  |
+| Operating Systems  | 447.3836666666666  |
+| C Programming      | 242.20275          |
++--------------------+--------------------+
+5 rows selected (27.189 seconds)
+yes the average price has changed earlier it was 519.67 and now it is 571.6370000000001
+
+   14. Delete all Java books.
+0: jdbc:hive2://localhost:10000/> DELETE FROM books_orc WHERE subject = 'Java Programming';
+
+   15. Rebuild the materialized view.
+0: jdbc:hive2://localhost:10000/> ALTER MATERIALIZED VIEW mv_books REBUILD;
+
+   16. Display a report that shows subject and average price in descending order -- on materialized view. -- Are new price changes visible in report?
+0: jdbc:hive2://localhost:10000/> SELECT subject,avg_price FROM mv_books ORDER BY avg_price DESC;
++--------------------+--------------------+
+|      subject       |     avg_price      |
++--------------------+--------------------+
+| Novel              | 726.6099999999999  |
+| C++ Programming    | 675.214            |
+| Operating Systems  | 447.3836666666666  |
+| C Programming      | 242.20275          |
++--------------------+--------------------+
+4 rows selected (22.518 seconds)
+yes all the java books has been removed from the materialized view
